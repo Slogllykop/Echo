@@ -206,65 +206,87 @@ export function draftToRule(
         return mockHeadersResult;
     }
 
-    const modifyRequestHeadersResult = headerEntriesToRecord(draft.modifyRequestHeaders);
-    if (!modifyRequestHeadersResult.ok) {
-        return modifyRequestHeadersResult;
-    }
-
-    const modifyResponseHeadersResult = headerEntriesToRecord(draft.modifyResponseHeaders);
-    if (!modifyResponseHeadersResult.ok) {
-        return modifyResponseHeadersResult;
-    }
-
-    let modifyStatus: number | undefined;
-    if (draft.modifyResponseStatus.trim()) {
-        const parsedStatus = Number.parseInt(draft.modifyResponseStatus, 10);
-        if (Number.isNaN(parsedStatus) || parsedStatus < 100 || parsedStatus > 599) {
-            return { ok: false, error: "Modified response status must be between 100 and 599." };
-        }
-        modifyStatus = parsedStatus;
-    }
-
+    let modifyRequestHeaders: Record<string, string> = {};
+    let modifyRequestBodyStrategy: BodyPatchStrategy = "none";
+    let modifyRequestBody = "";
     let requestJsonPatch: Record<string, unknown> = {};
-    if (draft.modifyRequestBodyStrategy === "merge-json") {
-        try {
-            const parsedJson = JSON.parse(draft.modifyRequestJsonPatch || "{}") as unknown;
-            if (
-                typeof parsedJson !== "object" ||
-                parsedJson === null ||
-                Array.isArray(parsedJson)
-            ) {
-                return {
-                    ok: false,
-                    error: "Request JSON patch must be a JSON object when merge-json strategy is selected.",
-                };
-            }
-            requestJsonPatch = parsedJson as Record<string, unknown>;
-        } catch {
-            return {
-                ok: false,
-                error: "Invalid request JSON patch. Please provide a valid JSON object.",
-            };
-        }
-    }
-
+    let modifyResponseHeaders: Record<string, string> = {};
+    let modifyStatus: number | undefined;
+    let modifyResponseBodyStrategy: ResponseBodyStrategy = "none";
+    let modifyResponseBody = "";
     let jsonPatch: Record<string, unknown> = {};
-    if (draft.modifyBodyStrategy === "merge-json") {
-        try {
-            const parsedJson = JSON.parse(draft.modifyJsonPatch || "{}") as unknown;
-            if (
-                typeof parsedJson !== "object" ||
-                parsedJson === null ||
-                Array.isArray(parsedJson)
-            ) {
+
+    if (draft.actionKind === "modify") {
+        const modifyRequestHeadersResult = headerEntriesToRecord(draft.modifyRequestHeaders);
+        if (!modifyRequestHeadersResult.ok) {
+            return modifyRequestHeadersResult;
+        }
+
+        const modifyResponseHeadersResult = headerEntriesToRecord(draft.modifyResponseHeaders);
+        if (!modifyResponseHeadersResult.ok) {
+            return modifyResponseHeadersResult;
+        }
+
+        modifyRequestHeaders = modifyRequestHeadersResult.headers;
+        modifyRequestBodyStrategy = draft.modifyRequestBodyStrategy;
+        modifyRequestBody = draft.modifyRequestBody;
+        modifyResponseHeaders = modifyResponseHeadersResult.headers;
+        modifyResponseBodyStrategy = draft.modifyBodyStrategy;
+        modifyResponseBody = draft.modifyBody;
+
+        if (draft.modifyResponseStatus.trim()) {
+            const parsedStatus = Number.parseInt(draft.modifyResponseStatus, 10);
+            if (Number.isNaN(parsedStatus) || parsedStatus < 100 || parsedStatus > 599) {
                 return {
                     ok: false,
-                    error: "JSON patch must be a JSON object when merge-json strategy is selected.",
+                    error: "Modified response status must be between 100 and 599.",
                 };
             }
-            jsonPatch = parsedJson as Record<string, unknown>;
-        } catch {
-            return { ok: false, error: "Invalid JSON patch. Please provide a valid JSON object." };
+            modifyStatus = parsedStatus;
+        }
+
+        if (draft.modifyRequestBodyStrategy === "merge-json") {
+            try {
+                const parsedJson = JSON.parse(draft.modifyRequestJsonPatch || "{}") as unknown;
+                if (
+                    typeof parsedJson !== "object" ||
+                    parsedJson === null ||
+                    Array.isArray(parsedJson)
+                ) {
+                    return {
+                        ok: false,
+                        error: "Request JSON patch must be a JSON object when merge-json strategy is selected.",
+                    };
+                }
+                requestJsonPatch = parsedJson as Record<string, unknown>;
+            } catch {
+                return {
+                    ok: false,
+                    error: "Invalid request JSON patch. Please provide a valid JSON object.",
+                };
+            }
+        }
+
+        if (draft.modifyBodyStrategy === "merge-json") {
+            try {
+                const parsedJson = JSON.parse(draft.modifyJsonPatch || "{}") as unknown;
+                if (
+                    typeof parsedJson !== "object" ||
+                    parsedJson === null ||
+                    Array.isArray(parsedJson)
+                ) {
+                    return {
+                        ok: false,
+                        error: "JSON patch must be a JSON object when merge-json strategy is selected.",
+                    };
+                }
+                jsonPatch = parsedJson as Record<string, unknown>;
+            } catch {
+                return {
+                    ok: false,
+                    error: "Invalid JSON patch. Please provide a valid JSON object.",
+                };
+            }
         }
     }
 
@@ -295,16 +317,16 @@ export function draftToRule(
                 },
                 modify: {
                     request: {
-                        headers: modifyRequestHeadersResult.headers,
-                        bodyStrategy: draft.modifyRequestBodyStrategy,
-                        body: draft.modifyRequestBody,
+                        headers: modifyRequestHeaders,
+                        bodyStrategy: modifyRequestBodyStrategy,
+                        body: modifyRequestBody,
                         jsonPatch: requestJsonPatch,
                     },
                     response: {
                         status: modifyStatus,
-                        headers: modifyResponseHeadersResult.headers,
-                        bodyStrategy: draft.modifyBodyStrategy,
-                        body: draft.modifyBody,
+                        headers: modifyResponseHeaders,
+                        bodyStrategy: modifyResponseBodyStrategy,
+                        body: modifyResponseBody,
                         jsonPatch,
                     },
                 },

@@ -62,11 +62,11 @@ function RequestOutcomePreview() {
     }
 
     return (
-        <section className="border-t border-border bg-background px-3 py-3">
+        <section className="border-t border-border bg-background px-3 py-3 z-10 sticky -bottom-1 left-0 right-0">
             <div className="mb-2 flex items-center justify-between">
                 <h2 className="flex items-center gap-1 text-xs font-semibold tracking-[0.14em] uppercase text-primary/90">
                     <IconFlask2 className="size-3 text-primary" />
-                    Request Outcome Preview
+                    Simulate
                 </h2>
                 {result && (
                     <Badge variant={result.kind === "pass-through" ? "outline" : "default"}>

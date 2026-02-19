@@ -34,6 +34,12 @@ function CodeEditorImpl({
             <div className="flex items-center justify-between gap-2">
                 <Label htmlFor={id}>{label}</Label>
                 <div className="flex items-center gap-1">
+                    {language === "json" && onFormatJson && (
+                        <Button type="button" size="xs" variant="outline" onClick={onFormatJson}>
+                            <IconSparkles />
+                            Format
+                        </Button>
+                    )}
                     {allowLanguageSwitch && (
                         <>
                             <Button
@@ -55,12 +61,6 @@ function CodeEditorImpl({
                                 Text
                             </Button>
                         </>
-                    )}
-                    {language === "json" && onFormatJson && (
-                        <Button type="button" size="xs" variant="outline" onClick={onFormatJson}>
-                            <IconSparkles />
-                            Format
-                        </Button>
                     )}
                 </div>
             </div>

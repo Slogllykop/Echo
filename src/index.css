@@ -92,7 +92,7 @@
     body,
     #root {
         width: 420px;
-        min-height: 640px;
+        min-height: 600px;
     }
     html {
         @apply font-sans;
@@ -108,4 +108,9 @@
 
 ::-webkit-scrollbar-thumb {
     background: color-mix(in oklab, var(--muted-foreground), transparent 65%);
+}
+
+/* Prevent layout shift from scrollbar appearance */
+html {
+    scrollbar-gutter: stable;
 }

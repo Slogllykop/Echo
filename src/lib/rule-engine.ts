@@ -11,19 +11,46 @@ function isMethodMatch(ruleMethod: string, requestMethod: string): boolean {
     return normalizeMethod(ruleMethod) === normalizeMethod(requestMethod);
 }
 
+function getUrlCandidates(url: string): string[] {
+    const candidates = new Set<string>();
+    const trimmedUrl = url.trim();
+
+    if (!trimmedUrl) {
+        return [];
+    }
+
+    candidates.add(trimmedUrl);
+
+    try {
+        const parsedUrl = new URL(trimmedUrl, "http://echo.local");
+        const pathnameWithSearch = `${parsedUrl.pathname}${parsedUrl.search}`;
+
+        candidates.add(parsedUrl.href);
+        candidates.add(pathnameWithSearch);
+        candidates.add(parsedUrl.pathname);
+    } catch {
+        // Keep raw URL only when parsing fails.
+    }
+
+    return [...candidates];
+}
+
 function matchesByType(type: UrlMatchType, url: string, pattern: string): boolean {
     if (!pattern.trim()) {
         return false;
     }
 
+    const candidates = getUrlCandidates(url);
+
     switch (type) {
         case "contains":
-            return url.includes(pattern);
+            return candidates.some((candidate) => candidate.includes(pattern));
         case "exact":
-            return url === pattern;
+            return candidates.some((candidate) => candidate === pattern);
         case "regex":
             try {
-                return new RegExp(pattern).test(url);
+                const regex = new RegExp(pattern);
+                return candidates.some((candidate) => regex.test(candidate));
             } catch {
                 return false;
             }
@@ -48,64 +75,11 @@ function matchSpecificity(rule: EchoRule): number {
     }
 }
 
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-    return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function isSubsetMatch(expected: unknown, actual: unknown): boolean {
-    if (Array.isArray(expected)) {
-        if (!Array.isArray(actual) || expected.length !== actual.length) {
-            return false;
-        }
-
-        return expected.every((expectedItem, index) => isSubsetMatch(expectedItem, actual[index]));
-    }
-
-    if (isPlainObject(expected)) {
-        if (!isPlainObject(actual)) {
-            return false;
-        }
-
-        return Object.entries(expected).every(([key, expectedValue]) =>
-            isSubsetMatch(expectedValue, actual[key]),
-        );
-    }
-
-    return Object.is(expected, actual);
-}
-
-function isMockRequestBodyMatch(rule: EchoRule, request: InterceptRequest): boolean {
-    if (rule.action.kind !== "mock") {
-        return true;
-    }
-
-    const requestBodyRule = rule.action.modify.request;
-    const strategy = requestBodyRule.bodyStrategy ?? "none";
-
-    if (strategy === "none") {
-        return true;
-    }
-
-    const incomingBody = request.body ?? "";
-
-    if (strategy === "replace") {
-        return incomingBody === (requestBodyRule.body ?? "");
-    }
-
-    try {
-        const incomingJson = JSON.parse(incomingBody) as unknown;
-        return isSubsetMatch(requestBodyRule.jsonPatch ?? {}, incomingJson);
-    } catch {
-        return false;
-    }
-}
-
 export function evaluateRules(rules: EchoRule[], request: InterceptRequest): InterceptDecision {
     const matchingRules = rules
         .filter((rule) => rule.enabled)
         .filter((rule) => isMethodMatch(rule.match.method, request.method))
         .filter((rule) => matchesByType(rule.match.type, request.url, rule.match.pattern))
-        .filter((rule) => isMockRequestBodyMatch(rule, request))
         .sort((firstRule, secondRule) => {
             const specificityDelta = matchSpecificity(secondRule) - matchSpecificity(firstRule);
             if (specificityDelta !== 0) {

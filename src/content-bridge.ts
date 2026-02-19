@@ -9,6 +9,12 @@ import {
     type PageEvaluateMessage,
 } from "@/lib/types";
 
+declare global {
+    interface Window {
+        __echoContentBridgeInstalled?: boolean;
+    }
+}
+
 function isPageEvaluateMessage(value: unknown): value is PageEvaluateMessage {
     if (typeof value !== "object" || value === null) {
         return false;
@@ -24,35 +30,51 @@ function isPageEvaluateMessage(value: unknown): value is PageEvaluateMessage {
     );
 }
 
-window.addEventListener("message", (event: MessageEvent<unknown>) => {
-    if (event.source !== window) {
+function installContentBridge(): void {
+    if (window.__echoContentBridgeInstalled) {
         return;
     }
+    window.__echoContentBridgeInstalled = true;
 
-    const incomingMessage = event.data;
+    window.addEventListener("message", (event: MessageEvent<unknown>) => {
+        const incomingMessage = event.data;
 
-    if (!isPageEvaluateMessage(incomingMessage)) {
-        return;
-    }
+        if (!isPageEvaluateMessage(incomingMessage)) {
+            return;
+        }
 
-    void (async () => {
-        const response = await sendRuntimeMessage<EvaluatePayload>({
-            type: "interceptor:evaluate",
-            request: incomingMessage.request,
-        });
+        void (async () => {
+            let decision: BridgeDecisionMessage["decision"] = {
+                kind: "pass-through",
+                delayMs: 0,
+            };
 
-        const outgoingMessage: BridgeDecisionMessage = {
-            source: ECHO_BRIDGE_SOURCE,
-            type: ECHO_BRIDGE_RESPONSE_TYPE,
-            requestId: incomingMessage.requestId,
-            decision: response.ok
-                ? response.data.decision
-                : {
-                      kind: "pass-through",
-                      delayMs: 0,
-                  },
-        };
+            try {
+                const response = await sendRuntimeMessage<EvaluatePayload>({
+                    type: "interceptor:evaluate",
+                    request: incomingMessage.request,
+                });
+                if (response.ok) {
+                    decision = response.data.decision;
+                }
+            } catch {
+                // Keep pass-through fallback when runtime messaging fails unexpectedly.
+            }
 
-        window.postMessage(outgoingMessage, "*");
-    })();
-});
+            const outgoingMessage: BridgeDecisionMessage = {
+                source: ECHO_BRIDGE_SOURCE,
+                type: ECHO_BRIDGE_RESPONSE_TYPE,
+                requestId: incomingMessage.requestId,
+                decision,
+            };
+
+            window.postMessage(outgoingMessage, "*");
+        })();
+    });
+}
+
+export function onExecute(): void {
+    installContentBridge();
+}
+
+installContentBridge();

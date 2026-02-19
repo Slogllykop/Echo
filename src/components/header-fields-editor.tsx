@@ -72,8 +72,9 @@ function HeaderFieldsEditor({ id, label, fields, onChange }: HeaderFieldsEditorP
                             size="icon-xs"
                             variant="ghost"
                             onClick={() => deleteField(field.id)}
+                            className="hover:bg-transparent"
                         >
-                            <IconTrash className="text-destructive" />
+                            <IconTrash className="size-4 text-destructive" />
                         </Button>
                     </div>
                 ))}
