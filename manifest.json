@@ -1,6 +1,6 @@
 {
     "manifest_version": 3,
-    "name": "Echo",
+    "name": "Echo - API Mock & Patch Engine",
     "version": "1.1.0",
     "description": "Offline API mock and patch engine for browser requests.",
     "background": {
@@ -8,7 +8,7 @@
         "type": "module"
     },
     "action": {
-        "default_title": "Echo",
+        "default_title": "Echo - API Mock & Patch Engine",
         "default_popup": "index.html",
         "default_icon": {
             "16": "icons/icon16.png",
@@ -21,29 +21,17 @@
         "48": "icons/icon48.png",
         "128": "icons/icon128.png"
     },
-    "permissions": [
-        "storage"
-    ],
-    "host_permissions": [
-        "<all_urls>"
-    ],
+    "permissions": ["storage"],
+    "host_permissions": ["<all_urls>"],
     "content_scripts": [
         {
-            "matches": [
-                "<all_urls>"
-            ],
-            "js": [
-                "src/content-bridge.ts"
-            ],
+            "matches": ["<all_urls>"],
+            "js": ["src/content-bridge.ts"],
             "run_at": "document_start"
         },
         {
-            "matches": [
-                "<all_urls>"
-            ],
-            "js": [
-                "src/page-interceptor.ts"
-            ],
+            "matches": ["<all_urls>"],
+            "js": ["src/page-interceptor.ts"],
             "run_at": "document_start",
             "world": "MAIN"
         }
