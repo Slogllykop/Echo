@@ -1,4 +1,9 @@
-import { fail, handleMessage, isBackgroundMessage } from "@/background/handlers";
+import {
+    broadcastRulesToAllTabs,
+    fail,
+    handleMessage,
+    isBackgroundMessage,
+} from "@/background/handlers";
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     if (!isBackgroundMessage(message)) {
@@ -16,4 +21,20 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         });
 
     return true;
+});
+
+// Push rules to tabs when they finish loading, so newly navigated pages
+// get the current rule set immediately.
+chrome.tabs.onUpdated.addListener((_tabId, changeInfo, tab) => {
+    if (changeInfo.status !== "complete") {
+        return;
+    }
+    if (!tab.url || tab.url.startsWith("chrome://") || tab.url.startsWith("chrome-extension://")) {
+        return;
+    }
+
+    // Small delay to ensure the content script is injected and ready.
+    setTimeout(() => {
+        void broadcastRulesToAllTabs();
+    }, 100);
 });

@@ -7,8 +7,9 @@ import {
     patchBodyText,
     type XhrSendBody,
 } from "@/interceptor/body-utils";
-import { getDecision, sleep } from "@/interceptor/decision-bridge";
+import { sleep } from "@/interceptor/decision-bridge";
 import { nativeFetch } from "@/interceptor/fetch-patch";
+import { getLocalDecision, hasActiveRules } from "@/interceptor/rule-cache";
 import {
     emitProgressEvent,
     emitReadyStateChange,
@@ -61,7 +62,7 @@ async function processXhrSend(xhr: XMLHttpRequest, body: XhrSendBody): Promise<v
         body: normalizedBody.textBody,
     };
 
-    const decision = await getDecision(requestSnapshot);
+    const decision = getLocalDecision(requestSnapshot);
 
     if (meta.aborted) {
         return;
@@ -73,11 +74,15 @@ async function processXhrSend(xhr: XMLHttpRequest, body: XhrSendBody): Promise<v
         return;
     }
 
+    // ── Pass-through: call native send directly, no synthetic overrides ──
     if (decision.kind === "pass-through") {
         meta.nativeSent = true;
         originalXhrSend.call(xhr, body as Document | XMLHttpRequestBodyInit | null);
         return;
     }
+
+    // ── Mock / Modify: install synthetic overrides only when needed ──
+    installSyntheticXhrOverrides(xhr);
 
     const state = getSyntheticState(xhr);
     state.useSynthetic = true;
@@ -208,7 +213,19 @@ export function patchXmlHttpRequest(): void {
             return;
         }
         meta.sendCalled = true;
-        installSyntheticXhrOverrides(this);
+
+        // ── Fast path: no active rules → call native send immediately ──
+        // No async delay, no synthetic overrides, no Request construction.
+        // This makes XHR behave identically to the native implementation.
+        if (!hasActiveRules()) {
+            meta.nativeSent = true;
+            originalXhrSend.call(this, body ?? null);
+            return;
+        }
+
+        // Slow path: rules are active, need async evaluation.
+        // Synthetic overrides are installed inside processXhrSend ONLY
+        // if the decision is mock/modify (not for pass-through).
         void processXhrSend(this, body);
     };
 

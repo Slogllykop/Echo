@@ -106,7 +106,8 @@ export type BackgroundMessage =
     | { type: "rules:reorder"; ruleIds: string[] }
     | { type: "extension:set-enabled"; enabled: boolean }
     | { type: "interceptor:evaluate"; request: InterceptRequest }
-    | { type: "interceptor:simulate"; request: InterceptRequest };
+    | { type: "interceptor:simulate"; request: InterceptRequest }
+    | { type: "rules:request-sync" };
 
 export interface RulesListPayload {
     rules: EchoRule[];
@@ -117,10 +118,23 @@ export interface EvaluatePayload {
     decision: InterceptDecision;
 }
 
+/** Payload pushed from background → content-bridge → page when rules change. */
+export interface RulesSyncPayload {
+    rules: EchoRule[];
+    extensionEnabled: boolean;
+}
+
+/** Message sent from background to content scripts when rules/state change. */
+export interface RulesPushMessage {
+    type: "rules:push";
+    payload: RulesSyncPayload;
+}
+
 export const ECHO_PAGE_SOURCE = "echo-page";
 export const ECHO_BRIDGE_SOURCE = "echo-bridge";
 export const ECHO_PAGE_REQUEST_TYPE = "echo:evaluate";
 export const ECHO_BRIDGE_RESPONSE_TYPE = "echo:decision";
+export const ECHO_RULES_SYNC_TYPE = "echo:rules-sync";
 
 export interface PageEvaluateMessage {
     source: typeof ECHO_PAGE_SOURCE;
@@ -134,4 +148,11 @@ export interface BridgeDecisionMessage {
     type: typeof ECHO_BRIDGE_RESPONSE_TYPE;
     requestId: string;
     decision: InterceptDecision;
+}
+
+/** Message posted from content-bridge to page with synced rules. */
+export interface BridgeRulesSyncMessage {
+    source: typeof ECHO_BRIDGE_SOURCE;
+    type: typeof ECHO_RULES_SYNC_TYPE;
+    payload: RulesSyncPayload;
 }

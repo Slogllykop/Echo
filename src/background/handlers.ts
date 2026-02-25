@@ -7,6 +7,7 @@ import type {
     EchoRule,
     EvaluatePayload,
     RulesListPayload,
+    RulesSyncPayload,
 } from "@/lib/types";
 
 let cachedRules: EchoRule[] | null = null;
@@ -22,6 +23,7 @@ const MESSAGE_TYPES: BackgroundMessage["type"][] = [
     "extension:set-enabled",
     "interceptor:evaluate",
     "interceptor:simulate",
+    "rules:request-sync",
 ];
 
 export function isBackgroundMessage(value: unknown): value is BackgroundMessage {
@@ -89,6 +91,49 @@ function normalizeRule(rule: EchoRule, existingRules: EchoRule[]): EchoRule {
     };
 }
 
+/**
+ * Broadcasts the current rules + enabled state to all tabs.
+ * Called after any rule or enabled-state mutation so that
+ * page interceptors update their local cache immediately.
+ */
+export async function broadcastRulesToAllTabs(): Promise<void> {
+    const rules = await getRules();
+    const extensionEnabled = await getExtensionEnabled();
+    const payload: RulesSyncPayload = { rules, extensionEnabled };
+
+    try {
+        const tabs = await chrome.tabs.query({});
+        for (const tab of tabs) {
+            if (!tab.id || !tab.url) {
+                continue;
+            }
+            // Skip chrome:// and other restricted URLs
+            if (tab.url.startsWith("chrome://") || tab.url.startsWith("chrome-extension://")) {
+                continue;
+            }
+            try {
+                await chrome.tabs.sendMessage(tab.id, {
+                    type: "rules:push",
+                    payload,
+                });
+            } catch {
+                // Tab may not have the content script loaded; ignore.
+            }
+        }
+    } catch {
+        // Query may fail if no tabs are available; safe to ignore.
+    }
+}
+
+/**
+ * Returns the current rules sync payload for initial sync requests.
+ */
+export async function getSyncPayload(): Promise<ApiResult<RulesSyncPayload>> {
+    const rules = await getRules();
+    const extensionEnabled = await getExtensionEnabled();
+    return ok({ rules, extensionEnabled });
+}
+
 async function handleRulesMessage(
     message: BackgroundMessage,
 ): Promise<ApiResult<RulesListPayload>> {
@@ -102,11 +147,13 @@ async function handleRulesMessage(
             const normalizedRule = normalizeRule(message.rule, existingRules);
             await upsertRule(normalizedRule);
             const rules = await refreshRules();
+            void broadcastRulesToAllTabs();
             return ok(await toRulesPayload(rules));
         }
         case "rules:delete": {
             await deleteRule(message.ruleId);
             const rules = await refreshRules();
+            void broadcastRulesToAllTabs();
             return ok(await toRulesPayload(rules));
         }
         case "rules:toggle": {
@@ -115,11 +162,13 @@ async function handleRulesMessage(
                 return fail("Rule not found.");
             }
             const rules = await refreshRules();
+            void broadcastRulesToAllTabs();
             return ok(await toRulesPayload(rules));
         }
         case "rules:reorder": {
             await reorderRules(message.ruleIds);
             const rules = await refreshRules();
+            void broadcastRulesToAllTabs();
             return ok(await toRulesPayload(rules));
         }
         default:
@@ -136,6 +185,7 @@ async function handleExtensionMessage(
 
     await setExtensionEnabled(message.enabled);
     const rules = await getRules();
+    void broadcastRulesToAllTabs();
     return ok(await toRulesPayload(rules));
 }
 
@@ -163,7 +213,7 @@ async function handleEvaluateMessage(
 
 export async function handleMessage(
     message: BackgroundMessage,
-): Promise<ApiResult<RulesListPayload | EvaluatePayload>> {
+): Promise<ApiResult<RulesListPayload | EvaluatePayload | RulesSyncPayload>> {
     if (
         message.type === "rules:list" ||
         message.type === "rules:upsert" ||
@@ -180,6 +230,10 @@ export async function handleMessage(
 
     if (message.type === "interceptor:evaluate" || message.type === "interceptor:simulate") {
         return handleEvaluateMessage(message);
+    }
+
+    if (message.type === "rules:request-sync") {
+        return getSyncPayload();
     }
 
     return fail("Unknown message received by service worker.");

@@ -1,13 +1,6 @@
 import { sendRuntimeMessage } from "@/lib/runtime";
-import {
-    type BridgeDecisionMessage,
-    ECHO_BRIDGE_RESPONSE_TYPE,
-    ECHO_BRIDGE_SOURCE,
-    ECHO_PAGE_REQUEST_TYPE,
-    ECHO_PAGE_SOURCE,
-    type EvaluatePayload,
-    type PageEvaluateMessage,
-} from "@/lib/types";
+import type { BridgeRulesSyncMessage, RulesPushMessage, RulesSyncPayload } from "@/lib/types";
+import { ECHO_BRIDGE_SOURCE, ECHO_RULES_SYNC_TYPE } from "@/lib/types";
 
 declare global {
     interface Window {
@@ -15,19 +8,26 @@ declare global {
     }
 }
 
-function isPageEvaluateMessage(value: unknown): value is PageEvaluateMessage {
+function isRulesPushMessage(value: unknown): value is RulesPushMessage {
     if (typeof value !== "object" || value === null) {
         return false;
     }
 
-    const candidate = value as Partial<PageEvaluateMessage>;
+    const candidate = value as Partial<RulesPushMessage>;
     return (
-        candidate.source === ECHO_PAGE_SOURCE &&
-        candidate.type === ECHO_PAGE_REQUEST_TYPE &&
-        typeof candidate.requestId === "string" &&
-        typeof candidate.request === "object" &&
-        candidate.request !== null
+        candidate.type === "rules:push" &&
+        typeof candidate.payload === "object" &&
+        candidate.payload !== null
     );
+}
+
+function forwardRulesToPage(payload: RulesSyncPayload): void {
+    const outgoing: BridgeRulesSyncMessage = {
+        source: ECHO_BRIDGE_SOURCE,
+        type: ECHO_RULES_SYNC_TYPE,
+        payload,
+    };
+    window.postMessage(outgoing, "*");
 }
 
 function installContentBridge(): void {
@@ -36,41 +36,28 @@ function installContentBridge(): void {
     }
     window.__echoContentBridgeInstalled = true;
 
-    window.addEventListener("message", (event: MessageEvent<unknown>) => {
-        const incomingMessage = event.data;
-
-        if (!isPageEvaluateMessage(incomingMessage)) {
-            return;
+    // Listen for rules:push messages from the background service worker.
+    chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+        if (isRulesPushMessage(message)) {
+            forwardRulesToPage(message.payload);
+            sendResponse({ ok: true });
         }
-
-        void (async () => {
-            let decision: BridgeDecisionMessage["decision"] = {
-                kind: "pass-through",
-                delayMs: 0,
-            };
-
-            try {
-                const response = await sendRuntimeMessage<EvaluatePayload>({
-                    type: "interceptor:evaluate",
-                    request: incomingMessage.request,
-                });
-                if (response.ok) {
-                    decision = response.data.decision;
-                }
-            } catch {
-                // Keep pass-through fallback when runtime messaging fails unexpectedly.
-            }
-
-            const outgoingMessage: BridgeDecisionMessage = {
-                source: ECHO_BRIDGE_SOURCE,
-                type: ECHO_BRIDGE_RESPONSE_TYPE,
-                requestId: incomingMessage.requestId,
-                decision,
-            };
-
-            window.postMessage(outgoingMessage, "*");
-        })();
+        return undefined;
     });
+
+    // Request an initial rules sync from the background on install.
+    void (async () => {
+        try {
+            const response = await sendRuntimeMessage<RulesSyncPayload>({
+                type: "rules:request-sync",
+            });
+            if (response.ok) {
+                forwardRulesToPage(response.data);
+            }
+        } catch {
+            // Background may not be ready yet; rules will arrive via push.
+        }
+    })();
 }
 
 export function onExecute(): void {

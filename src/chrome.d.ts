@@ -24,7 +24,25 @@ declare global {
                 set: (items: Record<string, unknown>, callback?: () => void) => void;
             };
         };
+        tabs: {
+            query: (queryInfo: Record<string, unknown>) => Promise<ChromeTab[]>;
+            sendMessage: (tabId: number, message: unknown) => Promise<unknown>;
+            onUpdated: {
+                addListener: (
+                    callback: (
+                        tabId: number,
+                        changeInfo: { status?: string },
+                        tab: ChromeTab,
+                    ) => void,
+                ) => void;
+            };
+        };
     };
+
+    interface ChromeTab {
+        id?: number;
+        url?: string;
+    }
 }
 
 export {};
