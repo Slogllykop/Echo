@@ -23,3 +23,15 @@ dist-ssr
 *.sln
 *.sw?
 .pnpm-store/*
+
+webstore/
+skills-lock.json
+.agent
+scripts
+docs
+.gemini/
+.gsd/
+adapters
+model_capabilities.yaml
+PROJECT_RULES.md
+GSD-STYLE.md
